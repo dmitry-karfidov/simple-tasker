@@ -1,6 +1,5 @@
 services:
   app:
-    container_name: simple-tasker-backend
     build:
       context: ./backend
     ports:
@@ -16,7 +15,6 @@ services:
         condition: service_healthy
 
   db:
-    container_name: simple-tasker-db
     image: postgres:18.3
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
