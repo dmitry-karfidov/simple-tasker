@@ -19,7 +19,7 @@ Backend application for managing tasks and projects, designed to practice buildi
 3. Create `secrets/` if needed
 4. Copy `secrets.example/db_password.txt` to `secrets/db_password.txt`
 5. Put your real database password into `secrets/db_password.txt`
-6. Run `docker compose up --build`
+6. Run `docker compose up -d --build`
 
 ## Status
 

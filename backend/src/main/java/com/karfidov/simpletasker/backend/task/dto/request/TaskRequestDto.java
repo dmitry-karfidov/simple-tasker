@@ -18,6 +18,6 @@ public final class TaskRequestDto {
     @Size(max = 127)
     private String title;
 
-
+    @Size(max = 2047)
     private String description;
 }

@@ -13,3 +13,6 @@ frontend/dist/
 
 # Secrets
 secrets/
+
+# Agents
+AGENTS.md
