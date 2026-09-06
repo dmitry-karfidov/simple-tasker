@@ -9,7 +9,7 @@ Backend application for managing tasks and projects, designed to practice buildi
 ## Architecture
 
 - Backend: Spring Boot REST API
-- Frontend: React SPA (planned)
+- Frontend: React + TypeScript SPA (Vite)
 - Database: PostgreSQL
 
 ## Local run with Docker Compose
@@ -23,7 +23,25 @@ Backend application for managing tasks and projects, designed to practice buildi
 
 ## Status
 
-in devellopment (not production ready)
+in development (not production ready)
+
+## Frontend
+
+After starting the backend using the steps above, run the frontend in a separate terminal:
+
+```sh
+cd frontend
+npm ci
+npm run dev
+```
+
+Open http://127.0.0.1:5173. Node.js 22.12+ or 24+ is required.
+The local frontend server forwards `/api` to `http://localhost:8080`.
+If the backend uses another port, set `API_PROXY_TARGET` in `frontend/.env.local`.
+
+The UI supports task creation, editing, details, status transitions, server-side
+filtering, sorting and pagination. See [frontend/README.md](./frontend/README.md)
+for the HTTP contract, tests, build and deployment boundary.
 
 ## Tech Stack
 
