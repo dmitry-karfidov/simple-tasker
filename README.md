@@ -23,7 +23,7 @@ Backend application for managing tasks and projects, designed to practice buildi
 
 ## Status
 
-in devellopment (not production ready)
+in development (not production ready)
 
 ## Frontend
 
