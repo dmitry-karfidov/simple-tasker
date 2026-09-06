@@ -1,6 +1,7 @@
 import type { TaskStatus } from './api';
 
 const paths = {
+  trash: 'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7',
   check: 'm5 12 4 4L19 6',
   plus: 'M12 5v14M5 12h14',
   list: 'M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01',

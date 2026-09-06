@@ -59,4 +59,10 @@ public class TaskController {
     public TaskFullDto getTask(@PathVariable long taskId) {
         return taskService.getTask(taskId);
     }
+
+    @DeleteMapping("/{taskId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteTask(@PathVariable long taskId) {
+        taskService.deleteTask(taskId);
+    }
 }

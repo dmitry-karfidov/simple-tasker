@@ -37,6 +37,10 @@ async function mockApi(page: Page, seed = initialTasks) {
       return route.fulfill({ status: 201, json: created });
     }
     if (!task) return route.fulfill({ status: 404, json: { message: 'Task not found' } });
+    if (method === 'DELETE') {
+      tasks.splice(tasks.indexOf(task), 1);
+      return route.fulfill({ status: 204 });
+    }
     if (method === 'PATCH') Object.assign(task, request.postDataJSON());
     if (method === 'POST') {
       if (parts[4] === 'start' && task.status === 'NEW') task.status = 'IN_PROGRESS';
@@ -204,4 +208,105 @@ test('fits the viewport and renders user content as text', async ({ page }) => {
   const bounds = await page.getByRole('dialog').boundingBox();
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+});
+
+test('requires confirmation and cancels deletion without sending a request', async ({ page }) => {
+  const { writes } = await mockApi(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Открыть задачу: Задача 12', exact: true }).click();
+  await page.getByRole('button', { name: 'Удалить', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Удалить задачу?' });
+  await expect(dialog).toContainText('Задача 12');
+  await expect(dialog).toContainText('Восстановить их не получится.');
+  await expect(page.getByRole('button', { name: 'Отмена', exact: true })).toBeFocused();
+  await page.getByRole('button', { name: 'Отмена', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Детали задачи' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Удалить', exact: true })).toBeFocused();
+  await page.getByRole('button', { name: 'Удалить', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Детали задачи' })).toBeVisible();
+  expect(writes).toHaveLength(0);
+});
+
+for (const status of ['NEW', 'IN_PROGRESS', 'DONE'] as const) {
+  test(`deletes a ${status} task with 204 and refreshes the list and counters`, async ({ page }) => {
+    const { writes } = await mockApi(page, [{ ...initialTasks[0], status }]);
+    await page.goto('/');
+    await expect(page.locator(`.stat-${status} .stat-number`)).toContainText('1');
+    await page.getByRole('button', { name: 'Открыть задачу: Задача 1', exact: true }).click();
+    await page.getByRole('button', { name: 'Удалить', exact: true }).click();
+    await page.getByRole('button', { name: 'Удалить задачу', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByRole('status')).toContainText('Задача удалена');
+    await expect(page.getByText('Место для ваших планов')).toBeVisible();
+    await expect(page.locator(`.stat-${status} .stat-number`)).toContainText('0');
+    await expect(page.getByRole('button', { name: 'Новая задача', exact: true })).toBeFocused();
+    expect(writes).toEqual([{ method: 'DELETE', path: '/api/v1/tasks/1', body: null }]);
+  });
+}
+
+test('returns to the previous page after deleting its last task and retains sorting and filter', async ({ page }) => {
+  await mockApi(page, initialTasks.slice(0, 11).map(task => ({ ...task, status: 'NEW' })));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Новые', exact: true }).click();
+  await page.getByLabel('Порядок сортировки').selectOption('ASC');
+  await page.getByRole('button', { name: 'Следующая страница' }).click();
+  await expect(page.getByRole('button', { name: /^Открыть задачу:/ })).toHaveCount(1);
+  await page.getByRole('button', { name: 'Открыть задачу: Задача 11', exact: true }).click();
+  await page.getByRole('button', { name: 'Удалить', exact: true }).click();
+  await page.getByRole('button', { name: 'Удалить задачу', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Открыть задачу:/ })).toHaveCount(10);
+  await expect(page.getByRole('button', { name: /^Открыть задачу:/ }).first()).toHaveAccessibleName('Открыть задачу: Задача 1');
+  await expect(page.getByRole('button', { name: 'Новые', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByLabel('Порядок сортировки')).toHaveValue('ASC');
+  await expect(page.getByRole('button', { name: 'Предыдущая страница' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Следующая страница' })).toBeDisabled();
+  await expect(page.locator('.range-text')).toHaveText('1–10 из 10');
+});
+
+test('keeps a task after failed deletion and allows retry while preventing duplicate requests', async ({ page }) => {
+  const { tasks, writes } = await mockApi(page, [initialTasks[0]]);
+  let releaseRequest!: () => void;
+  const pendingRequest = new Promise<void>(resolve => { releaseRequest = resolve; });
+  let attempts = 0;
+  await page.route('**/api/v1/tasks/1', async route => {
+    if (route.request().method() !== 'DELETE') return route.fallback();
+    attempts++;
+    if (attempts > 1) return route.fallback();
+    await pendingRequest;
+    await route.fulfill({ status: 500, json: { message: 'Something went wrong' } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Открыть задачу: Задача 1', exact: true }).click();
+  await page.getByRole('button', { name: 'Удалить', exact: true }).click();
+  await page.getByRole('button', { name: 'Удалить задачу', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Удаляем…', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Отмена', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Закрыть окно', exact: true })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Удалить задачу?' })).toBeVisible();
+  releaseRequest();
+  await expect(page.getByRole('alert')).toContainText('Сервер не смог обработать запрос');
+  expect(tasks).toHaveLength(1);
+  expect(attempts).toBe(1);
+  await page.getByRole('button', { name: 'Удалить задачу', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText('Место для ваших планов')).toBeVisible();
+  expect(attempts).toBe(2);
+  expect(writes).toHaveLength(1);
+});
+
+test('refreshes stale data when the task has already been deleted by another client', async ({ page }) => {
+  const { tasks, writes } = await mockApi(page, [initialTasks[0]]);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Открыть задачу: Задача 1', exact: true }).click();
+  await page.getByRole('button', { name: 'Удалить', exact: true }).click();
+  tasks.splice(0);
+  await page.getByRole('button', { name: 'Удалить задачу', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('status')).toContainText('Задача уже удалена');
+  await expect(page.getByText('Место для ваших планов')).toBeVisible();
+  await expect(page.locator('.stat-IN_PROGRESS .stat-number')).toContainText('0');
+  expect(writes).toEqual([{ method: 'DELETE', path: '/api/v1/tasks/1', body: null }]);
 });
