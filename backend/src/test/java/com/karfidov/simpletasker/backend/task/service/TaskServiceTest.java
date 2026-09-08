@@ -303,4 +303,28 @@ class TaskServiceTest {
                 .isInstanceOf(NotFoundException.class)
                 .hasMessage(String.format(ExceptionMessages.TASK_NOT_FOUND, taskId));
     }
+
+    @Test
+    void deleteTask_shouldDeleteExistingTask() {
+        long taskId = 1L;
+        int rowsDeleted = 1;
+
+        when(taskRepository.deleteTaskById(taskId)).thenReturn(rowsDeleted);
+
+        taskService.deleteTask(taskId);
+
+        verify(taskRepository).deleteTaskById(taskId);
+    }
+
+    @Test
+    void deleteTask_shouldThrowNotFoundException_whenTaskDoesNotExist() {
+        long taskId = 1L;
+        int rowsDeleted = 0;
+
+        when(taskRepository.deleteTaskById(taskId)).thenReturn(rowsDeleted);
+
+        assertThatThrownBy(() -> taskService.deleteTask(taskId))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessage(String.format(ExceptionMessages.TASK_NOT_FOUND, taskId));
+    }
 }

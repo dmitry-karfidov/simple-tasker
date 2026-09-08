@@ -39,7 +39,7 @@ Open http://127.0.0.1:5173. Node.js 22.12+ or 24+ is required.
 The local frontend server forwards `/api` to `http://localhost:8080`.
 If the backend uses another port, set `API_PROXY_TARGET` in `frontend/.env.local`.
 
-The UI supports task creation, editing, details, status transitions, server-side
+The UI supports task creation, editing, deletion with confirmation, details, status transitions, server-side
 filtering, sorting and pagination. See [frontend/README.md](./frontend/README.md)
 for the HTTP contract, tests, build and deployment boundary.
 

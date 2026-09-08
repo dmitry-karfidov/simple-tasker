@@ -81,6 +81,15 @@ public class TaskService {
         return taskMapper.toFullDto(task);
     }
 
+    @Transactional
+    public void deleteTask(long taskId) {
+        int deleted = taskRepository.deleteTaskById(taskId);
+
+        if (deleted == 0) {
+            throw new NotFoundException(String.format(ExceptionMessages.TASK_NOT_FOUND, taskId));
+        }
+    }
+
     @Transactional(readOnly = true)
     public PageResponse<TaskShortDto> getAllTasks(TaskSortField sortBy,
                                                   SortMode sortMode,

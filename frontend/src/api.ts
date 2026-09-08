@@ -41,6 +41,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError('Не удалось связаться с сервером. Проверьте подключение и повторите попытку.', 0);
   }
 
+  // DELETE succeeds with an empty body; the other endpoints still require JSON.
+  if (response.status === 204 && init.method === 'DELETE') return undefined as T;
+
   const data = await response.json().catch(() => null);
   if (!response.ok) {
     const messages: Record<number, string> = {
@@ -74,6 +77,9 @@ export const tasksApi = {
   },
   update(id: number, input: TaskInput) {
     return request<Task>(`/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+  },
+  delete(id: number) {
+    return request<void>(`/${id}`, { method: 'DELETE' });
   },
   advance(id: number, status: 'NEW' | 'IN_PROGRESS') {
     return request<Task>(`/${id}/${status === 'NEW' ? 'start' : 'complete'}`, { method: 'POST' });
