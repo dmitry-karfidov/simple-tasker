@@ -1,9 +1,11 @@
 package com.karfidov.simpletasker.backend.task.integration;
 
+import com.jayway.jsonpath.JsonPath;
 import com.karfidov.simpletasker.backend.error.reasons_and_messages.ExceptionMessages;
 import com.karfidov.simpletasker.backend.error.reasons_and_messages.ExceptionReasons;
 import com.karfidov.simpletasker.backend.task.builder.TaskTestBuilder;
 import org.springframework.http.HttpStatus;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 import com.karfidov.simpletasker.backend.support.AbstractIntegrationTest;
@@ -31,7 +33,7 @@ import static org.assertj.core.api.Assertions.*;
 
 @AutoConfigureMockMvc
 @Transactional
-public class TaskControllerIT extends AbstractIntegrationTest {
+public class TaskIT extends AbstractIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
@@ -46,8 +48,9 @@ public class TaskControllerIT extends AbstractIntegrationTest {
         TaskRequestDto validRequestDto = TaskRequestDtoTestBuilder.aRequestDto().build();
         String expectedTitle = validRequestDto.getTitle();
         String expectedDescription = validRequestDto.getDescription();
+        int expectedAmountOfCreatedTasks = 1;
 
-        mockMvc.perform(post("/api/v1/tasks")
+        MvcResult result = mockMvc.perform(post("/api/v1/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(validRequestDto)))
                 .andExpect(status().isCreated())
@@ -55,16 +58,24 @@ public class TaskControllerIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.createdAt").exists())
                 .andExpect(jsonPath("$.title").value(expectedTitle))
                 .andExpect(jsonPath("$.description").value(expectedDescription))
-                .andExpect(jsonPath("$.status").value(TaskStatus.NEW.name()));
+                .andExpect(jsonPath("$.status").value(TaskStatus.NEW.name()))
+                .andReturn();
+
+        Long idFromResponse = Long.parseLong(
+                JsonPath.read(result.getResponse().getContentAsString(), "$.id").toString()
+        );
+
+        taskRepository.flush();
 
         List<Task> tasks = taskRepository.findAll();
-        assertThat(tasks).hasSize(1);
+        assertThat(tasks).hasSize(expectedAmountOfCreatedTasks);
 
         Task savedTask = tasks.getFirst();
 
         assertThat(savedTask.getTitle()).isEqualTo(expectedTitle);
         assertThat(savedTask.getDescription()).isEqualTo(expectedDescription);
         assertThat(savedTask.getStatus()).isEqualTo(TaskStatus.NEW);
+        assertThat(savedTask.getId()).isEqualTo(idFromResponse);
     }
 
     @Test
@@ -89,6 +100,48 @@ public class TaskControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void create_shouldTrimTitle_whenTitleContainsSpacesAtStartAndAtEnd() throws Exception {
+        TaskRequestDto validRequestDto = TaskRequestDtoTestBuilder.aRequestDto()
+                .withTitle("  Do something    ")
+                .withDescription("Test Description")
+                .build();
+
+        String expectedTitle = "Do something";
+        String expectedDescription = "Test Description";
+
+        mockMvc.perform(post("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(validRequestDto)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNumber())
+                .andExpect(jsonPath("$.createdAt").exists())
+                .andExpect(jsonPath("$.title").value(expectedTitle))
+                .andExpect(jsonPath("$.description").value(expectedDescription))
+                .andExpect(jsonPath("$.status").value(TaskStatus.NEW.name()));
+    }
+
+    @Test
+    void create_shouldCreateTask_whenTitleIs127() throws Exception {
+        String validTitle = "a".repeat(127);
+        String expectedDescription = "Test Description";
+
+        TaskRequestDto validRequestDto = TaskRequestDtoTestBuilder.aRequestDto()
+                .withTitle(validTitle)
+                .withDescription(expectedDescription)
+                .build();
+
+        mockMvc.perform(post("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(validRequestDto)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNumber())
+                .andExpect(jsonPath("$.createdAt").exists())
+                .andExpect(jsonPath("$.title").value(validTitle))
+                .andExpect(jsonPath("$.description").value(expectedDescription))
+                .andExpect(jsonPath("$.status").value(TaskStatus.NEW.name()));
+    }
+
+    @Test
     void create_shouldReturn400_whenTitleIsLongerThan127() throws Exception {
         String notValidTitle = "a".repeat(128);
 
@@ -98,8 +151,8 @@ public class TaskControllerIT extends AbstractIntegrationTest {
                 .build();
 
         mockMvc.perform(post("/api/v1/tasks")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(notValidRequestDto)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(notValidRequestDto)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.reason").value(ExceptionReasons.INCORRECT_REQUEST))
                 .andExpect(jsonPath("$.message").value(ExceptionMessages.VALIDATION_FAILED))
@@ -126,11 +179,12 @@ public class TaskControllerIT extends AbstractIntegrationTest {
 
         String expectedTitle = validUpdateDto.getTitle();
         String expectedDescription = validUpdateDto.getDescription();
+        int expectedAmountOfCreatedTasks = 1;
 
         taskRepository.save(existingTask);
         long taskId = existingTask.getId();
 
-        mockMvc.perform(patch("/api/v1/tasks/{id}", taskId)
+        MvcResult result = mockMvc.perform(patch("/api/v1/tasks/{id}", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(validUpdateDto)))
                 .andExpect(status().isOk())
@@ -138,7 +192,26 @@ public class TaskControllerIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.createdAt").exists())
                 .andExpect(jsonPath("$.title").value(expectedTitle))
                 .andExpect(jsonPath("$.description").value(expectedDescription))
-                .andExpect(jsonPath("$.status").value(TaskStatus.NEW.name()));
+                .andExpect(jsonPath("$.status").value(TaskStatus.NEW.name()))
+                .andReturn();
 
+        Long idFromResponse = Long.parseLong(
+                JsonPath.read(result.getResponse().getContentAsString(), "$.id").toString()
+        );
+
+        taskRepository.flush();
+
+        List<Task> tasks = taskRepository.findAll();
+        assertThat(tasks).hasSize(expectedAmountOfCreatedTasks);
+
+        Task savedTask = tasks.getFirst();
+
+        assertThat(savedTask.getTitle()).isEqualTo(expectedTitle);
+        assertThat(savedTask.getDescription()).isEqualTo(expectedDescription);
+        assertThat(savedTask.getStatus()).isEqualTo(TaskStatus.NEW);
+        assertThat(savedTask.getId()).isEqualTo(idFromResponse);
     }
+
+    @Test
+    void getAll
 }

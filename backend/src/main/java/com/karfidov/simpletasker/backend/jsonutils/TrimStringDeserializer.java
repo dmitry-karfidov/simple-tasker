@@ -1,15 +1,13 @@
 package com.karfidov.simpletasker.backend.jsonutils;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JsonDeserializer;
+import tools.jackson.core.JsonParser;
+import tools.jackson.databind.DeserializationContext;
+import tools.jackson.databind.ValueDeserializer;
 
-import java.io.IOException;
-
-public class TrimStringDeserializer extends JsonDeserializer<String> {
+public class TrimStringDeserializer extends ValueDeserializer<String> {
 
     @Override
-    public String deserialize(JsonParser p, DeserializationContext context) throws IOException {
+    public String deserialize(JsonParser p, DeserializationContext context) {
         String value = p.getValueAsString();
         return value == null ? null : value.trim();
     }

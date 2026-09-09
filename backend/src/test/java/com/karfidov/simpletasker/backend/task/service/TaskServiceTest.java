@@ -1,5 +1,6 @@
 package com.karfidov.simpletasker.backend.task.service;
 
+import com.karfidov.simpletasker.backend.common.web.request.param.SortMode;
 import com.karfidov.simpletasker.backend.error.exception.ConditionsNotMetException;
 import com.karfidov.simpletasker.backend.error.exception.NotFoundException;
 import com.karfidov.simpletasker.backend.error.reasons_and_messages.ExceptionMessages;
@@ -12,12 +13,19 @@ import com.karfidov.simpletasker.backend.task.mapper.TaskMapper;
 import com.karfidov.simpletasker.backend.task.model.Task;
 import com.karfidov.simpletasker.backend.task.model.TaskStatus;
 import com.karfidov.simpletasker.backend.task.repository.TaskRepository;
+import com.karfidov.simpletasker.backend.task.web.request.param.TaskSortField;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 import java.util.Optional;
 
@@ -240,17 +248,24 @@ class TaskServiceTest {
         assertThat(result).isSameAs(responseDto);
     }
 
-    @Test
-    void startTask_shouldThrowConditionsNotMetException_whenTaskStatusIsNotNew() {
-        Task taskForStart = TaskTestBuilder.aTask()
-                .withStatus(TaskStatus.IN_PROGRESS)
+
+    @ParameterizedTest(name = "Start task with status {0} should be impossible")
+    @EnumSource(
+            value = TaskStatus.class,
+            names = {"IN_PROGRESS", "DONE"}
+    )
+    void startTask_shouldThrowConditionsNotMetException_whenTaskStatusIsNotNew(TaskStatus initialStatus) {
+        Task task = TaskTestBuilder.aTask()
+                .withStatus(initialStatus)
                 .build();
 
-        when(taskRepository.findById(taskForStart.getId())).thenReturn(Optional.of(taskForStart));
+        when(taskRepository.findById(task.getId())).thenReturn(Optional.of(task));
 
-        assertThatThrownBy(() -> taskService.startTask(taskForStart.getId()))
+        assertThatThrownBy(() -> taskService.startTask(task.getId()))
                 .isInstanceOf(ConditionsNotMetException.class)
                 .hasMessage(ExceptionMessages.TASK_IS_ALREADY_STARTED_OR_DONE);
+
+        assertThat(task.getStatus()).isEqualTo(initialStatus);
     }
 
     @Test
@@ -280,17 +295,23 @@ class TaskServiceTest {
         assertThat(result).isSameAs(responseDto);
     }
 
-    @Test
-    void completeTask_shouldThrowConditionsNotMetException_whenTaskStatusIsNotInProgress() {
-        Task taskForComplete = TaskTestBuilder.aTask()
-                .withStatus(TaskStatus.DONE)
+    @ParameterizedTest(name = "Complete Task with status = {0} should be impossible")
+    @EnumSource(
+            value = TaskStatus.class,
+            names = {"NEW", "DONE"}
+    )
+    void completeTask_shouldThrowConditionsNotMetException_whenTaskStatusIsNotInProgress(TaskStatus initialStatus) {
+        Task task = TaskTestBuilder.aTask()
+                .withStatus(initialStatus)
                 .build();
 
-        when(taskRepository.findById(taskForComplete.getId())).thenReturn(Optional.of(taskForComplete));
+        when(taskRepository.findById(task.getId())).thenReturn(Optional.of(task));
 
-        assertThatThrownBy(() -> taskService.completeTask(taskForComplete.getId()))
+        assertThatThrownBy(() -> taskService.completeTask(task.getId()))
                 .isInstanceOf(ConditionsNotMetException.class)
                 .hasMessage(ExceptionMessages.TASK_IS_NOT_IN_PROGRESS);
+
+        assertThat(task.getStatus()).isEqualTo(initialStatus);
     }
 
     @Test
@@ -326,5 +347,51 @@ class TaskServiceTest {
         assertThatThrownBy(() -> taskService.deleteTask(taskId))
                 .isInstanceOf(NotFoundException.class)
                 .hasMessage(String.format(ExceptionMessages.TASK_NOT_FOUND, taskId));
+    }
+
+    @Test
+    void getAllTasks_shouldFindByStatus_whenStatusProvided() {
+        TaskSortField sortBy = TaskSortField.CREATED_AT;
+        TaskStatus status = TaskStatus.IN_PROGRESS;
+        SortMode sortMode = SortMode.DESC;
+        int page = 0;
+        int size = 10;
+
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(sortMode.getDirection(), sortBy.getProperty())
+        );
+
+        Page<Task> tasksPage = Page.empty(pageable);
+        when(taskRepository.findByStatus(status, pageable)).thenReturn(tasksPage);
+
+        taskService.getAllTasks(sortBy, sortMode, status, page, size);
+
+        verify(taskRepository).findByStatus(status, pageable);
+        verify(taskRepository, never()).findAll(any(Pageable.class));
+    }
+
+    @Test
+    void getAllTasks_shouldFindAllTasks_whenStatusIsNotProvided() {
+        TaskSortField sortBy = TaskSortField.CREATED_AT;
+        TaskStatus status = null;
+        SortMode sortMode = SortMode.DESC;
+        int page = 0;
+        int size = 10;
+
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(sortMode.getDirection(), sortBy.getProperty())
+        );
+
+        Page<Task> tasksPage = Page.empty(pageable);
+        when(taskRepository.findAll(pageable)).thenReturn(tasksPage);
+
+        taskService.getAllTasks(sortBy, sortMode, status, page, size);
+
+        verify(taskRepository).findAll(pageable);
+        verify(taskRepository, never()).findByStatus(nullable(TaskStatus.class), any(Pageable.class));
     }
 }

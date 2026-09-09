@@ -1,6 +1,6 @@
 package com.karfidov.simpletasker.backend.task.dto.request;
 
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import tools.jackson.databind.annotation.JsonDeserialize;
 import com.karfidov.simpletasker.backend.jsonutils.TrimStringDeserializer;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
