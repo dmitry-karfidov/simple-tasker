@@ -211,7 +211,4 @@ public class TaskIT extends AbstractIntegrationTest {
         assertThat(savedTask.getStatus()).isEqualTo(TaskStatus.NEW);
         assertThat(savedTask.getId()).isEqualTo(idFromResponse);
     }
-
-    @Test
-    void getAll
 }
