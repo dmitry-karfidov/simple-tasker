@@ -7,6 +7,8 @@ import com.karfidov.simpletasker.backend.task.builder.TaskTestBuilder;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import tools.jackson.databind.ObjectMapper;
 import com.karfidov.simpletasker.backend.support.AbstractIntegrationTest;
 import com.karfidov.simpletasker.backend.task.dto.request.TaskRequestDto;
@@ -21,6 +23,10 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -167,7 +173,7 @@ public class TaskIT extends AbstractIntegrationTest {
     @Test
     void update_shouldReturnUpdatedTaskAndPersistIt_whenRequestIsValid() throws Exception {
         Task existingTask = TaskTestBuilder.aTask()
-                .withId(null)
+                .withoutId()
                 .withTitle("Old Title")
                 .withDescription("Old Description")
                 .build();
@@ -210,5 +216,120 @@ public class TaskIT extends AbstractIntegrationTest {
         assertThat(savedTask.getDescription()).isEqualTo(expectedDescription);
         assertThat(savedTask.getStatus()).isEqualTo(TaskStatus.NEW);
         assertThat(savedTask.getId()).isEqualTo(idFromResponse);
+    }
+
+    @Test
+    void getAllTasks_shouldReturnCorrectPageResponse_whenSortModeSortOrderPageNumberAndSizeProvided() throws Exception {
+
+        List<Task> existingTasks10 = createTasksInChronologicalOrder(
+                TaskStatus.NEW,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.DONE,
+                TaskStatus.NEW,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.DONE,
+                TaskStatus.NEW,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.DONE,
+                TaskStatus.NEW
+        );
+
+        existingTasks10.sort(Comparator.comparing(Task::getCreatedAt).reversed());
+
+        taskRepository.saveAllAndFlush(existingTasks10);
+
+        MultiValueMap<String, String> queryParams = new LinkedMultiValueMap<>();
+        queryParams.add("sortMode", "ASC");
+        queryParams.add("page", "2");
+        queryParams.add("size", "3");
+
+        int expectedPageNumber = 2; //starts from 0 -> 0, 1, 2, 3 ...
+        int expectedAmountOfObjectsAtThePage = 3;
+        long expectedTotalElements = existingTasks10.size();
+        int expectedTotalPages = 4;
+
+        mockMvc.perform(get("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .queryParams(queryParams))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(expectedPageNumber))
+                .andExpect(jsonPath("$.size").value(expectedAmountOfObjectsAtThePage))
+                .andExpect(jsonPath("$.totalElements").value(expectedTotalElements))
+                .andExpect(jsonPath("$.totalPages").value(expectedTotalPages))
+                .andExpect(jsonPath("$.items", hasSize(expectedAmountOfObjectsAtThePage)))
+                .andExpect(jsonPath("$.items[0].id").isNumber())
+                .andExpect(jsonPath("$.items[0].createdAt")
+                        .value(Instant.parse("2026-01-01T12:00:00Z")
+                                .plus(6 * 10, ChronoUnit.MINUTES)
+                                .toString()))
+                .andExpect(jsonPath("$.items[*].title", contains(
+                        "Test Title 7", "Test Title 8", "Test Title 9"
+                )));
+    }
+
+    @Test
+    void getAllTasks_shouldReturnCorrectPageResponse_whenStatusFilterIsProvidedAndDefaultSizePageSortModeSortField() throws Exception {
+
+        List<Task> existingTasks20_InProgress6 = createTasksInChronologicalOrder(
+                TaskStatus.NEW,
+                TaskStatus.NEW,
+                TaskStatus.NEW,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.NEW,
+                TaskStatus.NEW,
+                TaskStatus.NEW,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.DONE,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.DONE,
+                TaskStatus.DONE,
+                TaskStatus.DONE,
+                TaskStatus.DONE,
+                TaskStatus.DONE,
+                TaskStatus.DONE,
+                TaskStatus.DONE
+        );
+
+        taskRepository.saveAllAndFlush(existingTasks20_InProgress6);
+
+        int expectedPageNumber = 0; //starts from 0 -> 0, 1, 2, 3 ...
+        int expectedPageSize = 10;
+        long expectedTotalElements = 6L;
+        int expectedTotalPages = 1;
+
+        mockMvc.perform(get("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .queryParam("status", "IN_PROGRESS"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(expectedPageNumber))
+                .andExpect(jsonPath("$.size").value(expectedPageSize))
+                .andExpect(jsonPath("$.totalElements").value(expectedTotalElements))
+                .andExpect(jsonPath("$.totalPages").value(expectedTotalPages))
+                .andExpect(jsonPath("$.items", hasSize(6)))
+                .andExpect(jsonPath("$.items[*].status", everyItem(is("IN_PROGRESS"))))
+                .andExpect(jsonPath("$.items[*].title", contains(
+                        "Test Title 13", "Test Title 11", "Test Title 7",
+                        "Test Title 6", "Test Title 5", "Test Title 4"
+                )));
+
+    }
+
+    private List<Task> createTasksInChronologicalOrder(TaskStatus... statuses) {
+        Instant baseTime = Instant.parse("2026-01-01T12:00:00Z");
+        List<Task> tasks = new ArrayList<>();
+        for (int i = 0; i < statuses.length; i++) {
+            Task task = TaskTestBuilder.aTask()
+                    .withoutId()
+                    .withTitle("Test Title " + (i + 1))
+                    .withDescription("Test Description " + (i + 1))
+                    .withCreatedAt(baseTime.plus(i * 10L, ChronoUnit.MINUTES))
+                    .withStatus(statuses[i])
+                    .build();
+            tasks.add(task);
+        }
+        return tasks;
     }
 }
